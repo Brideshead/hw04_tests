@@ -36,7 +36,7 @@ class PostModelTest(TestCase):
         self.assertEqual(expected_object_name, PostModelTest.group.title)
 
     def test_models_first_15_symbols(self):
-        """Проверяем, первые 15 символов выводимые в __str__."""  
+        """Проверяем, первые 15 символов выводимые в __str__."""
 
         LENGTH_POST = 15
 

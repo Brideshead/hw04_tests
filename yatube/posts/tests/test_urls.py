@@ -5,6 +5,7 @@ from posts.models import Group, Post
 
 User = get_user_model()
 
+
 class PostURLTests(TestCase):
     """
     Устанавливаем данные для тестирования posts/urls.
@@ -31,7 +32,7 @@ class PostURLTests(TestCase):
     def setUp(self):
         """
         Создаём различные экземпляры клиента.
-        Для проверки работоспобоности программы при 
+        Для проверки работоспобоности программы при
         разных уровнях авторизации.
         """
         self.guest_client = Client()
@@ -40,7 +41,7 @@ class PostURLTests(TestCase):
         self.authorized_client_author.force_login(self.user)
         self.user_not_author = User.objects.create(username='not_author')
         self.authorized_client_not_author = Client()
-        self.authorized_client_not_author.force_login(self.user_not_author)   
+        self.authorized_client_not_author.force_login(self.user_not_author)
 
     def test_urls_uses_correct_template(self):
         """URL-адреса использует соответствующий шаблон."""
