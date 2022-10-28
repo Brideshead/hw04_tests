@@ -45,7 +45,7 @@ class Post(models.Model):
     TEXT_LENGTH_RETURN: int = 50
 
     text = models.TextField(
-        'текст поста', 
+        'текст поста',
         help_text='Введите текст поста',
     )
     pub_date = models.DateTimeField(
