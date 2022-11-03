@@ -91,7 +91,9 @@ class PostFormTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, HTTPStatus.OK)
-        self.assertTrue(Post.objects.latest('pk').text == 'Отредактированный текст поста')
+        self.assertTrue(
+            Post.objects.latest('pk').text == 'Отредактированный текст поста',
+        )
         self.assertTrue(Post.objects.latest('pk').author == self.user)
         self.assertTrue(Post.objects.latest('pk').group.pk == self.group.pk)
 
