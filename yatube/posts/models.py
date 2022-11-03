@@ -15,7 +15,7 @@ class Group(models.Model):
     description: текст, описывающий сообщество.
     """
 
-    TITLE_LENGTH_RETURN: int = 30
+    TITLE_LENGTH_RETURN: int = 60
 
     title = models.CharField('название группы', max_length=200)
     slug = models.SlugField('уникальный адрес', unique=True)
@@ -49,19 +49,19 @@ class Post(models.Model):
         help_text='Введите текст поста',
     )
     pub_date = models.DateTimeField(
-        verbose_name='Дата публикации', auto_now_add=True,
+        verbose_name='дата публикации', auto_now_add=True,
     )
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        verbose_name='Автор',
+        verbose_name='автор',
     )
     group = models.ForeignKey(
         Group,
         blank=True,
         null=True,
         on_delete=models.SET_NULL,
-        verbose_name='Группа',
+        verbose_name='группа',
         help_text='Группа, к которой будет относиться пост',
     )
 

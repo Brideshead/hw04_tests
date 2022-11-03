@@ -2,6 +2,8 @@ import os
 
 LIMIT_POSTS = 10
 
+LENGTH_POST = 15
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SECRET_KEY = '@2oi_1*!!ldqi+%dsrjk7n+=!v$e)^pncz#b2a&#ee(0vkp46n'
@@ -91,8 +93,6 @@ LOGIN_REDIRECT_URL = 'posts:index'
 LANGUAGE_CODE = 'ru'
 
 TIME_ZONE = 'UTC'
-
-USE_I18N = True
 
 USE_L10N = True
 

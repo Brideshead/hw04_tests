@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -5,7 +6,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from core.utils import paginate
 from posts.forms import PostForm
 from posts.models import Group, Post, User
-from yatube.settings import LIMIT_POSTS
 
 
 def index(request: HttpRequest) -> HttpResponse:
@@ -17,7 +17,7 @@ def index(request: HttpRequest) -> HttpResponse:
     page_obj = paginate(
         Post.objects.select_related('author', 'group'),
         request,
-        LIMIT_POSTS,
+        settings.LIMIT_POSTS,
     )
     return render(
         request,
@@ -38,7 +38,7 @@ def group_posts(request: HttpRequest, slug: str) -> HttpResponse:
     page_obj = paginate(
         group.posts.select_related('group'),
         request,
-        LIMIT_POSTS,
+        settings.LIMIT_POSTS,
     )
     return render(
         request,
@@ -58,7 +58,7 @@ def profile(request: HttpRequest, username: str) -> HttpResponse:
     page_obj = paginate(
         author.posts.select_related('author'),
         request,
-        LIMIT_POSTS,
+        settings.LIMIT_POSTS,
     )
     return render(
         request,
@@ -101,11 +101,10 @@ def post_create(request: HttpRequest) -> HttpResponse:
                 'form': form, 'is_edit': False,
             },
         )
-    if form.is_valid() and request.method == 'POST':
-        post = form.save(commit=False)
-        post.author = request.user
-        post.save()
-        return redirect('posts:profile', post.author)
+    else:
+        form.instance.author = request.user
+        form.save()
+        return redirect('posts:profile', form.instance.author)
 
 
 @login_required

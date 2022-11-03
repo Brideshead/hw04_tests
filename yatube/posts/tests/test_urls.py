@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from mixer.backend.django import mixer
 
 from posts.models import Group, Post
 
@@ -18,43 +19,102 @@ class PostURLTests(TestCase):
         и сохраняем созданную запись в качестве переменной класса.
         """
         super().setUpClass()
-        cls.user = User.objects.create(username='test_author')
-        cls.group = Group.objects.create(
-            title='test_title',
-            slug='test_slug',
-            description='test_description',
-        )
+        cls.user = User.objects.create_user(username='test_author')
+        cls.group = mixer.blend(Group)
         cls.post = Post.objects.create(
             author=cls.user,
             text='test_text',
         )
+        cls.anon = Client()
+        cls.client = Client()
+        cls.group_list_url = f'/group/{cls.group.slug}/'
+        cls.post_edit_url = f'/posts/{cls.post.pk}/edit/'
+        cls.post_url = f'/posts/{cls.post.pk}/'
+        cls.profile_url = f'/profile/{cls.user.username}/'
+        cls.public_urls = (
+            ('/', 'posts/index.html'),
+            (cls.group_list_url, 'posts/group_list.html'),
+            (cls.post_url, 'posts/post_detail.html'),
+            (cls.profile_url, 'posts/profile.html'),
+        )
+        cls.private_urls = (
+            ('/create/', 'posts/create_post.html'),
+            (cls.post_edit_url, 'posts/create_post.html'),
+        )
 
-    def setUp(self):
+    def test_anon_public_pages_url_exists(self):
         """
-        Создаём различные экземпляры клиента.
-        Для проверки работоспобоности программы при
-        разных уровнях авторизации.
+        Проверка что все общие страницы доступны для
+        неавторизованного пользователя.
         """
-        self.guest_client = Client()
-        self.user = PostURLTests.user
-        self.authorized_client_author = Client()
-        self.authorized_client_author.force_login(self.user)
-        self.user_not_author = User.objects.create(username='not_author')
-        self.authorized_client_not_author = Client()
-        self.authorized_client_not_author.force_login(self.user_not_author)
+        for pages in self.public_urls:
+            url, name = pages
+            with self.subTest(url=url):
+                response = self.anon.get(url)
+                self.assertEqual(
+                    response.status_code,
+                    200,
+                    f'Ошибка: {name} для {self.anon} не доступен',
+                )
 
-    def test_urls_uses_correct_template(self):
-        """URL-адреса использует соответствующий шаблон."""
-        templates_url_names = {
-            '/': 'posts/index.html',
-            f'/group/{self.group.slug}/': 'posts/group_list.html',
-            f'/posts/{self.post.pk}/': 'posts/post_detail.html',
-            f'/profile/{self.user.username}/': 'posts/profile.html',
-            '/create/': 'posts/create_post.html',
-            f'/posts/{self.post.pk}/edit/': 'posts/create_post.html',
-        }
-        for address, template in templates_url_names.items():
-            with self.subTest(address=address):
-                response = self.authorized_client_author.get(address)
-                error_name = f'Ошибка: {address} ожидал шаблон {template}'
-                self.assertTemplateUsed(response, template, error_name)
+    def test_anon_private_pages_url_exists(self):
+        """
+        Проверка что все приватные страницы недоступны
+        для неавторизованного пользователя.
+        """
+        for pages in self.private_urls:
+            url, name = pages
+            with self.subTest(url=url):
+                response = self.anon.get(url)
+                self.assertEqual(
+                    response.status_code,
+                    302,
+                    f'Ошибка: {url} доступен для неавторизованного'
+                    f'пользователя на {name}',
+                )
+
+    def test_private_pages_for_authorized_url_exists(self):
+        """
+        Проверка что все приватные страницы доступны
+        для авторизованного пользователя.
+        """
+        self.client.force_login(self.user)
+        for pages in self.public_urls:
+            url, name = pages
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(
+                    response.status_code,
+                    200,
+                    f'Ошибка: {name} для {self.client} не доступен',
+                )
+
+    def test_public_urls_uses_correct_template(self):
+        """
+        Проверка общедоступные url-адреса используют
+        соответствующий шаблон.
+        """
+        for pages in self.public_urls:
+            url, name = pages
+            with self.subTest(url=url):
+                response = self.anon.get(url)
+                self.assertTemplateUsed(
+                    response,
+                    name,
+                    f'Ошибка: {url} ожидал шаблон {name}',
+                )
+
+    def test_private_urls_uses_correct_template(self):
+        """
+        Проверка общедоступные url-адреса
+        используют соответствующий шаблон.
+        """
+        for pages in self.public_urls:
+            url, name = pages
+            with self.subTest(url=url):
+                response = self.anon.get(url)
+                self.assertTemplateUsed(
+                    response,
+                    name,
+                    f'Ошибка: {url} ожидал шаблон {name}',
+                )

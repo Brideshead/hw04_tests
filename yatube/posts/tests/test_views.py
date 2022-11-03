@@ -1,7 +1,9 @@
 from django import forms
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+from mixer.backend.django import mixer
 
 from posts.models import Group, Post
 
@@ -24,57 +26,63 @@ class PostViewTests(TestCase):
         и сохраняем созданную запись в качестве переменной класса.
         """
         super().setUpClass()
-        cls.user = User.objects.create(username='test_author')
-        cls.group = Group.objects.create(
-            title='test_title',
-            slug='test_slug',
-            description='test_description',
-        )
+        cls.user = User.objects.create_user(username='test_author')
+        cls.group = mixer.blend(Group)
         cls.post = Post.objects.create(
             text='test_text',
             group=cls.group,
             author=cls.user,
         )
-        cls.guest_client = Client()
-        cls.author_client = Client()
-
-    def setUp(self):
-        """
-        Создаём различные экземпляры клиента.
-        Для проверки работоспобоности программы при
-        разных уровнях авторизации.
-        """
-        self.guest_client = Client()
-        self.user = PostViewTests.user
-        self.authorized_client_author = Client()
-        self.authorized_client_author.force_login(self.user)
-        self.user_not_author = User.objects.create(username='not_author')
-        self.authorized_client_not_author = Client()
-        self.authorized_client_not_author.force_login(self.user_not_author)
+        cls.anon = Client()
+        cls.authorized_client_author = Client()
+        cls.authorized_client_author.force_login(cls.user)
+        cls.authorized_client_not_author = Client()
+        cls.user_not_author = User.objects.create_user(username='not_author')
+        cls.authorized_client_not_author.force_login(cls.user_not_author)
+        cls.index_url = ('posts:index', 'posts/index.html', None)
+        cls.group_list_url = (
+            'posts:group_list',
+            'posts/group_list.html',
+            (cls.group.slug,),
+        )
+        cls.profile_url = (
+            'posts:profile',
+            'posts/profile.html',
+            (cls.user.username,),
+        )
+        cls.post_detail_url = (
+            'posts:post_detail',
+            'posts/post_detail.html',
+            (cls.post.pk,),
+        )
+        cls.post_create_url = (
+            'posts:post_create',
+            'posts/create_post.html',
+            None,
+        )
+        cls.post_edit_url = (
+            'posts:post_edit',
+            'posts/create_post.html',
+            (cls.post.pk,),
+        )
+        cls.paginated = (
+            cls.index_url,
+            cls.group_list_url,
+            cls.profile_url,
+        )
 
     def test_pages_uses_correct_template(self):
         """URL-адрес использует соответствующий шаблон."""
-        templates_pages_names = {
-            reverse('posts:index'): 'posts/index.html',
-            reverse(
-                'posts:group_list',
-                kwargs={'slug': self.group.slug},
-            ): 'posts/group_list.html',
-            reverse(
-                'posts:profile',
-                kwargs={'username': self.user.username},
-            ): 'posts/profile.html',
-            reverse(
-                'posts:post_detail',
-                kwargs={'post_id': self.post.pk},
-            ): 'posts/post_detail.html',
-            reverse('posts:post_create'): 'posts/create_post.html',
-            reverse(
-                'posts:post_edit',
-                kwargs={'post_id': self.post.pk},
-            ): 'posts/create_post.html',
-        }
-        for reverse_name, template in templates_pages_names.items():
+        templates_pages_names = (
+            self.index_url,
+            self.group_list_url,
+            self.profile_url,
+            self.post_create_url,
+            self.post_edit_url,
+        )
+        for pages in templates_pages_names:
+            name, template, arg = pages
+            reverse_name = reverse(name, args=arg)
             with self.subTest(reverse_name=reverse_name):
                 response = self.authorized_client_author.get(reverse_name)
                 error_name = f'Ошибка: {reverse_name} ожидал шаблон {template}'
@@ -83,32 +91,25 @@ class PostViewTests(TestCase):
     def test_index_page_show_correct_context(self):
         """Шаблон index сформирован с правильным контекстом."""
         response = self.authorized_client_author.get(reverse('posts:index'))
-        first_object = response.context['page_obj'][
-            PostViewTests.NUMBER_OF_CONTEXT
-        ]
-        first_text = first_object.text
-        first_group = first_object.group
-        self.assertEqual(first_text, self.post.text)
-        self.assertEqual(str(first_group), self.group.title)
+        first_object = response.context['post']
+        self.assertEqual(first_object.text, self.post.text)
+        self.assertEqual(str(first_object.group), self.group.title)
 
     def test_group_list_page_show_correct_context(self):
         """Шаблон group_list сформирован с правильным контекстом."""
         response = self.authorized_client_author.get(
-            reverse('posts:group_list', kwargs={'slug': self.group.slug}))
+            reverse('posts:group_list', args=(self.group.slug,)))
         first_object = response.context['page_obj'][0]
-        first_author = first_object.author
-        first_text = first_object.text
-        first_group = first_object.group
-        self.assertEqual(first_author, self.post.author)
-        self.assertEqual(first_text, self.post.text)
-        self.assertEqual(str(first_group), self.group.title)
+        self.assertEqual(first_object.author, self.post.author)
+        self.assertEqual(first_object.text, self.post.text)
+        self.assertEqual(str(first_object.group), self.group.title)
 
     def test_profile_show_correct_context(self):
         """Шаблон profile сформирован с правильным контекстом."""
         response = self.authorized_client_author.get(
             reverse('posts:profile', kwargs={'username': self.user.username}))
         first_object = response.context['page_obj'][
-            PostViewTests.NUMBER_OF_CONTEXT
+            self.NUMBER_OF_CONTEXT
         ]
         first_author = first_object.author
         first_text = first_object.text
@@ -120,7 +121,7 @@ class PostViewTests(TestCase):
     def test_post_detail_show_correct_context(self):
         """Шаблон post_detail сформирован с правильным контекстом."""
         response = self.authorized_client_author.get(
-            reverse('posts:post_detail', kwargs={'post_id': self.post.pk}))
+            reverse('posts:post_detail', args=(self.post.pk,)))
         self.assertEqual(response.context.get('post').pk, self.post.pk)
         self.assertEqual(response.context.get('post').text, self.post.text)
         self.assertEqual(response.context.get(
@@ -147,7 +148,7 @@ class PostViewTests(TestCase):
     def test_post_edit_show_correct_context(self):
         """Шаблон post_edit сформирован с правильным контекстом."""
         response = self.authorized_client_author.get(
-            reverse('posts:post_edit', kwargs={'post_id': self.post.pk}))
+            reverse('posts:post_edit', args=(self.post.pk,)))
         form_fields = {
             'text': forms.fields.CharField,
             'group': forms.fields.ChoiceField,
@@ -157,17 +158,15 @@ class PostViewTests(TestCase):
                 form_field = response.context.get('form').fields.get(value)
                 self.assertIsInstance(form_field, expected)
 
-    def test_created_post_show_correct_contect(self):
+    def test_created_post_show_correct_context(self):
         """
         Пост отображается корректно,
         если во время его создания, указать группу.
         """
-        test_user = User.objects.create(username='test_author_created_post')
-        test_group = Group.objects.create(
-            title='test_title_created_post',
-            slug='test_slug_created_post',
-            description='test_description_created_post',
+        test_user = User.objects.create_user(
+            username='test_author_created_post',
         )
+        test_group = mixer.blend(Group)
         test_post = Post.objects.create(
             text='test_text_created_post',
             author=test_user,
@@ -175,27 +174,29 @@ class PostViewTests(TestCase):
         )
         list_page_name = (
             reverse('posts:index'),
-            reverse('posts:group_list',
-                    kwargs={'slug': test_group.slug}),
+            reverse(
+                'posts:group_list',
+                args=(test_group.slug,),
+            ),
             reverse(
                 'posts:profile',
-                kwargs={'username': 'test_author_created_post'},
+                args=(test_user.username,),
             ),
         )
         for name_page in list_page_name:
             with self.subTest(name_page=name_page):
                 response = self.authorized_client_author.get(name_page)
                 first_object = response.context['page_obj'][
-                    PostViewTests.NUMBER_OF_CONTEXT
+                    self.NUMBER_OF_CONTEXT
                 ]
                 response = self.authorized_client_author.get(
                     reverse(
                         'posts:group_list',
-                        kwargs={'slug': self.group.slug},
+                        args=(self.group.slug,),
                     ),
                 )
                 group_test_slug = response.context['page_obj'][
-                    PostViewTests.NUMBER_OF_CONTEXT
+                    self.NUMBER_OF_CONTEXT
                 ]
                 self.assertEqual(first_object, test_post)
                 self.assertNotEqual(first_object, group_test_slug)
@@ -207,93 +208,47 @@ class PaginatorViewsTest(TestCase):
     Здесь создаются фикстуры: клиент и
     15 тестовых записей NUMBER_OF_POSTS.
 
-    NUMBER_OF_POSTS_FIRST_PAGE: количество выводимых
-    постов для первой страницы.
     NUMBER_OF_POSTS_SECOND_PAGE: количество выводимых
     постов для второй страницы.
     """
 
     NUMBER_OF_POSTS: int = 15
-    NUMBER_OF_POSTS_FIRST_PAGE: int = 10
     NUMBER_OF_POSTS_SECOND_PAGE: int = 5
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.user = User.objects.create(username='test_author')
-        cls.group = Group.objects.create(
-            title='test_title',
-            slug='test_slug',
-            description='test_description',
-        )
+        cls.user = User.objects.create_user(username='test_author')
+        cls.group = mixer.blend(Group)
         for cls.post_number in range(cls.NUMBER_OF_POSTS):
             cls.post_fill = Post.objects.create(
                 text=f'Пост {cls.post_number} в тесте!',
                 group=cls.group,
                 author=cls.user,
             )
-
-    def test_first_page_index_contains_ten_records(self):
-        """Пагинатор выводит для index 10 постов на первую страницу."""
-        response = self.client.get(reverse('posts:index'))
-        self.assertEqual(
-            len(response.context['page_obj']),
-            PaginatorViewsTest.NUMBER_OF_POSTS_FIRST_PAGE,
+        cls.paginated = (
+            ('posts:index', 'posts/index.html', None),
+            ('posts:profile', 'posts/profile.html', (cls.user.username,)),
+            ('posts:group_list', 'posts/group_list.html', (cls.group.slug,)),
         )
 
-    def test_second_page_index_contains_five_records(self):
-        """Пагинатор выводит для index 5 постов на вторую страницу."""
-        response = self.client.get(reverse('posts:index') + '?page=2')
-        self.assertEqual(
-            len(response.context['page_obj']),
-            PaginatorViewsTest.NUMBER_OF_POSTS_SECOND_PAGE,
-        )
-
-    def test_first_page_group_list_contains_ten_records(self):
-        """Пагинатор выводит для group_list 10 постов на первую страницу."""
-        response = self.client.get(
-            reverse(
-                'posts:group_list',
-                kwargs={'slug': self.group.slug}),
-        )
-        self.assertEqual(
-            len(response.context['page_obj']),
-            PaginatorViewsTest.NUMBER_OF_POSTS_FIRST_PAGE,
-        )
-
-    def test_second_page_group_list_contains_five_records(self):
-        """Пагинатор выводит для group_list 5 постов на вторую страницу."""
-        response = self.client.get(
-            reverse(
-                'posts:group_list',
-                kwargs={'slug': self.group.slug}) + '?page=2',
-        )
-        self.assertEqual(
-            len(response.context['page_obj']),
-            PaginatorViewsTest.NUMBER_OF_POSTS_SECOND_PAGE,
-        )
-
-    def test_first_page_profile_contains_ten_records(self):
-        """Пагинатор выводит для profile 10 постов на первую страницу."""
-        response = self.client.get(
-            reverse(
-                'posts:profile',
-                kwargs={'username': self.user.username},
-            ),
-        )
-        self.assertEqual(
-            len(response.context['page_obj']),
-            PaginatorViewsTest.NUMBER_OF_POSTS_FIRST_PAGE,
-        )
-
-    def test_second_page_profile_contains_five_records(self):
-        """Пагинатор выводит для profile 5 постов на вторую страницу."""
-        response = self.client.get(
-            reverse(
-                'posts:profile',
-                kwargs={'username': self.user.username}) + '?page=2',
-        )
-        self.assertEqual(
-            len(response.context['page_obj']),
-            PaginatorViewsTest.NUMBER_OF_POSTS_SECOND_PAGE,
-        )
+    def test_first_and_second_page_paginate_correct(self):
+        """Проверка вывода количества постов на первую и вторую страницы."""
+        for pages in self.paginated:
+            name, template, arg = pages
+            reverse_name = reverse(name, args=arg)
+            with self.subTest(reverse_name=reverse_name):
+                response = self.client.get(reverse_name)
+                self.assertEqual(
+                    len(response.context['page_obj']),
+                    settings.LIMIT_POSTS,
+                    f'Ошибка: Пагинатор не выводит на первую страницу'
+                    f'{template} 10 постов',
+                )
+                response = self.client.get(reverse_name + '?page=2')
+                self.assertEqual(
+                    len(response.context['page_obj']),
+                    self.NUMBER_OF_POSTS_SECOND_PAGE,
+                    f'Ошибка: Пагинатор не выводит на вторую страницу'
+                    f'{template} 5 постов',
+                )
